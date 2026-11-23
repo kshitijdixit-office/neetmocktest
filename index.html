@@ -140,7 +140,7 @@ const PM=n=>n<=45?0:n<=90?1:n<=135?2:3;
 const realQ=p=>({key:'p'+p.n,img:p.q,oi:p.o,q:'',o:['Option 1','Option 2','Option 3','Option 4'],a:p.a,da:p.da});
 const ok=(q,u)=>Array.isArray(q.a)?q.a.includes(u):u==q.a;
 function build(t){const qs=[],seen=new Set(),fn={d:tDirect,m:tMatch,f:tFact,n:tNum};
- t.sp.forEach((n,s)=>{let sec=t.pyq?(t.src||PAPER).filter(p=>PM(p.n)==s).map(p=>({...realQ(p),lab:t.lab,o:t.lab?['Option A','Option B','Option C','Option D']:realQ(p).o})):[];
+ t.sp.forEach((n,s)=>{let sec=t.pyq?(t.src||PAPER).filter(p=>(t.sm||PM)(p.n)==s).map(p=>({...realQ(p),lab:t.lab,o:t.lab?['Option A','Option B','Option C','Option D']:realQ(p).o})):[];
   sec.forEach(x=>seen.add(x.key));let tr=0;
   while(sec.length<n&&tr<6000){tr++;if(tr==600)USED.clear();
    const x=fn[R(s<2?['d','m','f','f','f','n','n','n']:['d','d','m','m','f','f','f','f','f','f'])](s);
@@ -150,16 +150,80 @@ let E=null,tick=null;
 const fmt=s=>{s=Math.max(0,s);const h=s/3600|0;return(h?h+':':'')+String((s%3600)/60|0).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
 function modal(h){const m=document.createElement('div');m.className='modal';m.innerHTML=`<div class="box">${h}</div>`;m.onclick=e=>{if(e.target==m)m.remove()};document.body.appendChild(m);return m}
 const PYQHTML=()=>`<div class="grid"><div class="card f"><span class="badge">PREVIOUS YEAR</span><h3>NEET (UG) 2026 · Code 12</h3><div class="big">180<small> min · 180 questions</small></div><div class="tags">${SEC.map(n=>`<span>${n} 45</span>`).join('')}</div><ul><li>The actual paper, Test Booklet Code 12, in the order printed.</li><li>Scorecard and correct answers after you submit.</li><li>Maximum marks: 720</li></ul><button class="btn" id="py">Start paper</button></div><div class="card f"><span class="badge">PREVIOUS YEAR</span><h3>NEET (UG) 2025 · Code 48</h3><div class="big">180<small> min · 180 questions</small></div><div class="tags">${SEC.map(n=>`<span>${n} 45</span>`).join('')}</div><ul><li>The actual paper, Test Booklet Code 48, in the order printed.</li><li>Question 30 has no correct option in the answer source, so any attempt scores as correct.</li><li>Maximum marks: 720</li></ul><button class="btn" id="py25">Start paper</button></div></div>`;
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const loadPdfJs=()=>new Promise((ok,no)=>{if(window.pdfjsLib)return ok();const e=document.createElement('script');e.src=PDFJS+'pdf.min.js';e.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';ok()};e.onerror=()=>no(new Error('Could not load the PDF reader. Check your internet connection.'));document.head.appendChild(e)});
+const UPHTML=()=>`<div class="card" style="max-width:760px"><h3 style="padding-right:0">PDF2CBT: turn a mock paper PDF into a CBT test</h3>
+<p class="meta">Your PDF is read inside your browser and is not uploaded anywhere. It works best with PDFs that have selectable text and questions numbered 1., 2., 3. …</p>
+<label class="meta">1. Question paper (PDF)</label><input type="file" id="upq" accept="application/pdf" style="margin-bottom:14px">
+<label class="meta">2. Answer key, if it is not already inside the paper (PDF or .txt, optional)</label><input type="file" id="upk" accept="application/pdf,text/plain" style="margin-bottom:14px">
+<label class="meta">Or type or paste the key, for example 1-3, 2-4, 3-1 or 1.C 2.A 3.D</label><textarea id="upt" rows="3" style="width:100%;margin-bottom:14px;font:inherit;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--sf);color:var(--tx)"></textarea>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+<label class="meta">Test name<input id="upn" value="My NEET Mock" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>
+<label class="meta">Minutes (blank = 1 per question)<input id="upm2" type="number" min="1" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>
+<label class="meta">Option labels in the paper<select id="upl" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"><option value="">1 2 3 4</option><option value="ABCD">A B C D</option></select></label></div>
+<div class="meta" style="margin-bottom:6px">Questions per subject (leave blank for an even split, or 45 each for 180 questions)</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">${SEC.map((n,i)=>`<label class="meta">${n}<input class="ups" type="number" min="0" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>`).join('')}</div>
+<button class="btn" id="upc">Convert to CBT</button><div id="upm" class="meta" style="margin-top:14px;white-space:pre-line"></div></div>`;
+async function readPdf(f){const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,pages=[];
+ for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i),vp=pg.getViewport({scale:1}),tc=await pg.getTextContent();
+  pages.push({pg,W:vp.width,H:vp.height,it:tc.items.filter(t=>t.str.trim()).map(t=>({s:t.str.trim(),x:t.transform[4],y:vp.height-t.transform[5]}))})}
+ return pages}
+const QRE=/^(?:Q\.?\s*)?(\d{1,3})\s*[.)](?=\s|$)/;
+function findQuestions(pages){const ev=[];
+ pages.forEach((P,pi)=>{const st=P.it.filter(t=>QRE.test(t.s)&&t.y>P.H*.05&&t.y<P.H*.95);
+  P.two=st.filter(t=>t.x<P.W*.3).length>=2&&st.filter(t=>t.x>P.W*.42&&t.x<P.W*.6).length>=2;if(!P.two&&pi>0&&pages[pi-1].two&&st.length<4)P.two=true;
+  const L={};P.it.forEach(t=>{const c=P.two&&t.x>=P.W/2?1:0,k=c+'|'+Math.round(t.y/3);(L[k]=L[k]||{c,y:t.y,a:[]}).a.push(t)});
+  Object.values(L).forEach(l=>{if(l.y<P.H*.05||l.y>P.H*.95)return;l.a.sort((a,b)=>a.x-b.x);const tx=l.a.map(t=>t.s).join(' '),cl=l.c?P.W/2:0;let m=tx.match(QRE);
+   if(m&&l.a[0].x-cl<P.W*.12)ev.push({p:pi,c:l.c,y:l.y,t:'q',n:+m[1]});
+   else if((m=tx.match(/^(?:Correct\s+)?(?:Answer|Ans)\b[\s.:\-–]*\(?\s*([1-4A-Da-d])\b/i)))ev.push({p:pi,c:l.c,y:l.y,t:'a',v:m[1]})})});
+ ev.sort((a,b)=>a.p-b.p||a.c-b.c||a.y-b.y);
+ const regs={},ans={};let cur=0,open=false,pos=0;const push=(n,p,c,y0,y1)=>{if(y1-y0>6)(regs[n]=regs[n]||[]).push({p,c,y0,y1})};
+ pages.forEach((P,pi)=>{const top=P.H*.05,bot=P.H*.95;for(let c=0;c<(P.two?2:1);c++){let start=top;
+  ev.filter(e=>e.p==pi&&e.c==c).forEach(e=>{
+   if(e.t=='q'&&e.n==cur+1){if(open)push(cur,pi,c,start,e.y-12);cur=e.n;open=true;start=e.y-12}
+   else if(e.t=='a'&&open){push(cur,pi,c,start,e.y-10);ans[cur]=e.v;open=false}});
+  if(open)push(cur,pi,c,start,bot)}});
+ return{regs,ans,count:cur}}
+const keyIdx=v=>/[A-Da-d]/.test(v)?v.toUpperCase().charCodeAt(0)-65:+v-1;
+function parseKey(txt,out){const re=/(\d{1,3})\s*[.:\-–—=)]?\s*\(?\s*([1-4]|[A-Da-d])\s*\)?(?=[\s,;.]|$)/g;let m;while((m=re.exec(txt))){const n=+m[1];if(n>=1&&n<=300&&!(n in out))out[n]=keyIdx(m[2])}return out}
+async function pdfText(f){if(!/pdf/i.test(f.type||f.name))return await f.text();const pages=await readPdf(f);return pages.map(P=>{const r=[...P.it].sort((a,b)=>Math.round(a.y/3)-Math.round(b.y/3)||a.x-b.x);return r.map(t=>t.s).join(' ')}).join(' ')}
+function stitch(parts){const w=Math.max(...parts.map(c=>c.width)),h=parts.reduce((a,c)=>a+c.height,0),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);let y=0;parts.forEach(p=>{g.drawImage(p,0,y);y+=p.height});
+ const d=g.getImageData(0,0,w,h).data;let t=h,b=-1,l=w,r=-1;for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){const i=(yy*w+xx)*4;if(d[i]<200||d[i+1]<200||d[i+2]<200){if(yy<t)t=yy;if(yy>b)b=yy;if(xx<l)l=xx;if(xx>r)r=xx}}
+ if(b<t)return null;const pad=8,o=document.createElement('canvas');o.width=r-l+1+2*pad;o.height=b-t+1+2*pad;const og=o.getContext('2d');og.fillStyle='#fff';og.fillRect(0,0,o.width,o.height);og.drawImage(c,l,t,r-l+1,b-t+1,pad,pad,r-l+1,b-t+1);return o.toDataURL('image/jpeg',.82)}
+async function renderRegs(pages,regs,tick){const S=2,cache={};const cv=async p=>{if(!cache[p]){const ks=Object.keys(cache);if(ks.length>3)delete cache[ks[0]];const P=pages[p],vp=P.pg.getViewport({scale:S}),c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await P.pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;cache[p]=c}return cache[p]};
+ const out={};let k=0;for(const n of Object.keys(regs).map(Number).sort((a,b)=>a-b)){const parts=[];
+  for(const s of regs[n]){const P=pages[s.p],src=await cv(s.p),w=(P.two?P.W/2:P.W)*S,h=Math.round((s.y1-s.y0)*S);if(h<12)continue;const c=document.createElement('canvas');c.width=Math.round(w);c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,h);g.drawImage(src,s.c?P.W/2*S:0,Math.max(0,s.y0*S),w,h,0,0,w,h);parts.push(c)}
+  out[n]=parts.length?stitch(parts):null;tick(++k)}return out}
+async function convert(){const say=t=>{$('#upm').textContent=t};
+ try{const f=$('#upq').files[0];if(!f)return say('Choose the question paper PDF first.');
+  say('Loading the PDF reader…');await loadPdfJs();say('Reading the PDF…');const pages=await readPdf(f);
+  const fq=findQuestions(pages);if(!fq.count)return say('I could not find numbered questions (1., 2., 3. …) in this PDF. It may be a scanned image, or the numbering may be in a different style.');
+  const key={};parseKey($('#upt').value,key);const kf=$('#upk').files[0];if(kf)parseKey(await pdfText(kf),key);
+  Object.keys(fq.ans).forEach(n=>{if(!(n in key))key[n]=keyIdx(fq.ans[n])});
+  const nk=Object.keys(key).length;if(!nk)return say('Found '+fq.count+' questions but no answer key. Upload the key, paste it in the box, or use a PDF that has "Answer (x)" after each question.');
+  const need=Object.keys(fq.regs).map(Number).filter(n=>n in key);const skipped=fq.count-need.length;
+  const regs={};need.forEach(n=>regs[n]=fq.regs[n]);
+  const imgs=await renderRegs(pages,regs,k=>say('Building question '+k+' of '+need.length+'…'));
+  const lab=$('#upl').value,items=[];need.sort((a,b)=>a-b).forEach(n=>{if(imgs[n])items.push({q:imgs[n],a:[key[n]],da:lab?'ABCD'[key[n]]:String(key[n]+1)})});
+  items.forEach((it,i)=>it.n=i+1);const N=items.length;if(!N)return say('No usable questions were built.');
+  let sp=[...document.querySelectorAll('.ups')].map(e=>+e.value||0);
+  if(!sp.some(x=>x)){sp=N==180?[45,45,45,45]:[0,1,2,3].map(i=>Math.floor(N/4)+(i<N%4?1:0))}
+  if(sp.reduce((a,b)=>a+b)!=N)return say('Your subject counts add up to '+sp.reduce((a,b)=>a+b)+' but '+N+' questions were built. Adjust the counts or leave them blank.');
+  CONV={id:'custom',pyq:1,src:items,lab,name:$('#upn').value||'Uploaded mock',min:+$('#upm2').value||N,sp,sm:n=>{let c=0;for(let i=0;i<4;i++){c+=sp[i];if(n<=c)return i}return 3}};
+  $('#upm').innerHTML='Ready: '+N+' questions built'+(skipped?' ('+skipped+' skipped: no answer found or could not be read)':'')+'. Subjects: '+sp.map((c,i)=>SEC[i]+' '+c).join(', ')+'. Time: '+CONV.min+' min.<br><br><button class="btn" id="ups">Start test</button>';
+  $('#ups').onclick=()=>start(CONV)}catch(e){say('Something went wrong: '+(e&&e.message||e))}}
+let CONV=null;
+const wireUpload=()=>{$('#upc').onclick=convert};
 let TAB='mock';
 function lobby(tab){if(typeof tab=='string')TAB=tab;clearInterval(tick);E=null;
 app.innerHTML=`<div class="wrap"><nav><span class="logo">Education<b>Times</b></span><a>News</a><a id="nx" style="cursor:pointer">Exams</a><a class="on">Mock Tests</a><a>Colleges</a></nav>
 <div class="crumb">Home › Exams › NEET UG › <b>Mock Tests</b></div><span class="pill">NEET UG 2027 preparation</span><h1>NEET Mock Tests</h1>
 <p class="lead">Practise in the latest NEET pattern: all questions compulsory, equal weightage to Physics, Chemistry, Botany and Zoology, +4 for a correct answer, −1 for a wrong one and no marks if unattempted. Freely move between subjects, then get your scorecard and answer key.</p>
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px"><button class="btn ${TAB=='pyq'?'':'g'}" id="tp">Past Year Papers</button><button class="btn ${TAB=='mock'?'':'g'}" id="tm2">Practice Mock Tests</button></div>
-${TAB=='pyq'?PYQHTML():`<p class="meta">Papers mix statement-based, match-the-following, “how many” and numerical questions like the real exam. Questions you have already seen are never served again (${USED.size} seen so far). <button class="btn g" id="rs" style="padding:4px 12px">Reset history</button></p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px"><button class="btn ${TAB=='pyq'?'':'g'}" id="tp">Past Year Papers</button><button class="btn ${TAB=='mock'?'':'g'}" id="tm2">Practice Mock Tests</button><button class="btn ${TAB=='up'?'':'g'}" id="tu">PDF2CBT</button></div>
+${TAB=='pyq'?PYQHTML():TAB=='up'?UPHTML():`<p class="meta">Papers mix statement-based, match-the-following, “how many” and numerical questions like the real exam. Questions you have already seen are never served again (${USED.size} seen so far). <button class="btn g" id="rs" style="padding:4px 12px">Reset history</button></p>
 <div class="grid">${TESTS.map(t=>{const n=t.sp.reduce((a,b)=>a+b);return`<div class="card ${t.f?'f':''}">${t.f?'<span class="badge">FULL PAPER</span>':''}<h3>${t.name}</h3><div class="big">${t.min}<small> min · ${n} questions</small></div>
 <div class="tags">${t.sp.map((c,i)=>`<span>${SEC[i]} ${c}</span>`).join('')}</div><ul>${t.pts.map(p=>`<li>${p}</li>`).join('')}<li>Maximum marks: ${n*4}</li></ul><button class="btn" data-t="${t.id}">Start test</button></div>`}).join('')}</div>`}</div>`;
-document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>start(TESTS.find(x=>x.id==b.dataset.t)));$('#tp').onclick=()=>lobby('pyq');$('#tm2').onclick=()=>lobby('mock');$('#nx').onclick=()=>lobby('pyq');if($('#rs'))$('#rs').onclick=()=>{USED.clear();saveUsed();lobby()};if($('#py'))$('#py').onclick=()=>start(PYQ);if($('#py25'))$('#py25').onclick=()=>start(PYQ25)}
+document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>start(TESTS.find(x=>x.id==b.dataset.t)));$('#tp').onclick=()=>lobby('pyq');$('#tm2').onclick=()=>lobby('mock');$('#tu').onclick=()=>lobby('up');if(TAB=='up')wireUpload();$('#nx').onclick=()=>lobby('pyq');if($('#rs'))$('#rs').onclick=()=>{USED.clear();saveUsed();lobby()};if($('#py'))$('#py').onclick=()=>start(PYQ);if($('#py25'))$('#py25').onclick=()=>start(PYQ25)}
 function exams(){lobby('pyq')}
 function start(t){const qs=build(t);qs.forEach((q,i)=>q.i=i);E={t,qs,ans:{},vis:{},mk:{},cur:0,sec:0,left:t.min*60,time:{}};
 tick=setInterval(()=>{E.left--;E.time[E.cur]=(E.time[E.cur]||0)+1;if(E.left<=0)return finish();const e=$('#tm');if(e)e.textContent=fmt(E.left)},1000);draw()}
@@ -185,6 +249,6 @@ app.innerHTML=`<div class="wrap"><nav><span class="logo">Education<b>Times</b></
 <div class="stats"><div class="st"><b>${T.sc}</b>Score (max ${T.tot*4})</div><div class="st"><b>${T.a}/${T.tot}</b>Attempted</div><div class="st"><b>${T.c}</b>Correct</div><div class="st"><b>${T.w}</b>Incorrect</div><div class="st"><b>${T.a?Math.round(T.c/T.a*100):0}%</b>Accuracy</div></div>
 <h3>Subject-wise analysis</h3><div class="tbl"><table><tr><th>Subject</th><th>Attempted</th><th>Correct</th><th>Wrong</th><th>Score</th><th>Accuracy</th></tr>${R.map(r=>`<tr><td>${r.n}</td><td>${r.a}/${r.tot}</td><td>${r.c}</td><td>${r.w}</td><td>${r.sc}/${r.tot*4}</td><td>${r.a?Math.round(r.c/r.a*100):0}%</td></tr>`).join('')}</table></div>
 <h3>Answer key &amp; review</h3>${E.qs.map((q,n)=>{const u=E.ans[q.i];return`<div class="ky"><div class="meta">${SEC[q.s]} · Q${n+1} · ${u==null?'Unattempted':ok(q,u)?'✅ Correct (+4)':'❌ Wrong (−1)'}</div><div style="margin:6px 0 10px;white-space:pre-line">${q.img?`<img class="qi" src="${q.img}">`:esc(q.q)}</div>${q.img?`<div style="margin-bottom:10px"><b>Correct answer: option ${q.da}</b></div>`:''}${q.o.map((o,k)=>`<div class="opt ${ok(q,k)?'right':k==u?'wrong':''}"><i>${q.lab?q.lab[k]:k+1}</i><span>${q.oi?`<img class="oi" src="${q.oi[k]}">`:esc(o)}</span></div>`).join('')}</div>`}).join('')}</div>`;
-$('#bk').onclick=E.t.pyq?exams:lobby}
+$('#bk').onclick=E.t.id=='custom'?()=>lobby('up'):E.t.pyq?exams:lobby}
 lobby();
 </script></body></html>
