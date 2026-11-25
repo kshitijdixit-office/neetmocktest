@@ -137,7 +137,7 @@ function tNum(s){const g=R(GEN[s])();return{...g,key:'n'+g.q}}
 const PYQ={id:'pyq2026',pyq:1,name:'NEET (UG) 2026 · Code 12',min:180,sp:[45,45,45,45]};
 const PYQ25={id:'pyq2025',pyq:1,src:PAPER25,lab:'ABCD',name:'NEET (UG) 2025 · Code 48',min:180,sp:[45,45,45,45]};
 const PM=n=>n<=45?0:n<=90?1:n<=135?2:3;
-const realQ=p=>({key:'p'+p.n,img:p.q,oi:p.o,q:'',o:['Option 1','Option 2','Option 3','Option 4'],a:p.a,da:p.da});
+const realQ=p=>({key:'p'+p.n,img:p.q,oi:p.o,q:'',o:['Option 1','Option 2','Option 3','Option 4'],a:p.a,da:p.da,ref:p});
 const ok=(q,u)=>Array.isArray(q.a)?q.a.includes(u):u==q.a;
 function build(t){const qs=[],seen=new Set(),fn={d:tDirect,m:tMatch,f:tFact,n:tNum};
  t.sp.forEach((n,s)=>{let sec=t.pyq?(t.src||PAPER).filter(p=>(t.sm||PM)(p.n)==s).map(p=>({...realQ(p),lab:t.lab,o:t.lab?['Option A','Option B','Option C','Option D']:realQ(p).o})):[];
@@ -153,16 +153,17 @@ const PYQHTML=()=>`<div class="grid"><div class="card f"><span class="badge">PRE
 const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 const loadPdfJs=()=>new Promise((ok,no)=>{if(window.pdfjsLib)return ok();const e=document.createElement('script');e.src=PDFJS+'pdf.min.js';e.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';ok()};e.onerror=()=>no(new Error('Could not load the PDF reader. Check your internet connection.'));document.head.appendChild(e)});
 const UPHTML=()=>`<div class="card" style="max-width:760px"><h3 style="padding-right:0">PDF2CBT: turn a mock paper PDF into a CBT test</h3>
-<p class="meta">Your PDF is read inside your browser and is not uploaded anywhere. It works best with PDFs that have selectable text and questions numbered 1., 2., 3. …</p>
-<label class="meta">1. Question paper (PDF)</label><input type="file" id="upq" accept="application/pdf" style="margin-bottom:14px">
-<label class="meta">2. Answer key, if it is not already inside the paper (PDF or .txt, optional)</label><input type="file" id="upk" accept="application/pdf,text/plain" style="margin-bottom:14px">
-<label class="meta">Or type or paste the key, for example 1-3, 2-4, 3-1 or 1.C 2.A 3.D</label><textarea id="upt" rows="3" style="width:100%;margin-bottom:14px;font:inherit;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--sf);color:var(--tx)"></textarea>
+<p class="meta">Upload only the question paper (no answer key needed). Your PDF is read inside your browser. Gemini then works out the answers in the background while you take the test, and your score uses those AI answers, so a few may be wrong.</p>
+<label class="meta">Question paper (PDF, with selectable text)</label><input type="file" id="upq" accept="application/pdf" style="margin-bottom:14px">
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
 <label class="meta">Test name<input id="upn" value="My NEET Mock" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>
 <label class="meta">Minutes (blank = 1 per question)<input id="upm2" type="number" min="1" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>
-<label class="meta">Option labels in the paper<select id="upl" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"><option value="">1 2 3 4</option><option value="ABCD">A B C D</option></select></label></div>
+<label class="meta">Option labels in the paper<select id="upl" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"><option value="">1 2 3 4</option><option value="ABCD">A B C D</option></select></label>
+</div>
 <div class="meta" style="margin-bottom:6px">Questions per subject (leave blank for an even split, or 45 each for 180 questions)</div>
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">${SEC.map((n,i)=>`<label class="meta">${n}<input class="ups" type="number" min="0" style="width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)"></label>`).join('')}</div>
+<label class="meta">Gemini API key (used to work out the answers)</label><input id="upk2" type="password" placeholder="Paste your Gemini API key" autocomplete="off" style="margin-bottom:6px;width:100%;font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--sf);color:var(--tx)">
+<p class="meta" style="margin-top:0">The key stays in this browser and is sent only to Google’s Gemini API. You can create one free in Google AI Studio.</p>
 <button class="btn" id="upc">Convert to CBT</button><div id="upm" class="meta" style="margin-top:14px;white-space:pre-line"></div></div>`;
 async function readPdf(f){const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,pages=[];
  for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i),vp=pg.getViewport({scale:1}),tc=await pg.getTextContent();
@@ -194,26 +195,53 @@ async function renderRegs(pages,regs,tick){const S=2,cache={};const cv=async p=>
  const out={};let k=0;for(const n of Object.keys(regs).map(Number).sort((a,b)=>a-b)){const parts=[];
   for(const s of regs[n]){const P=pages[s.p],src=await cv(s.p),w=(P.two?P.W/2:P.W)*S,h=Math.round((s.y1-s.y0)*S);if(h<12)continue;const c=document.createElement('canvas');c.width=Math.round(w);c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,h);g.drawImage(src,s.c?P.W/2*S:0,Math.max(0,s.y0*S),w,h,0,0,w,h);parts.push(c)}
   out[n]=parts.length?stitch(parts):null;tick(++k)}return out}
+const GEMINI_KEY='';
+const GEMINI_MODEL='gemini-2.5-flash';
+const AIQ={items:[],stop:false,skip:false,err:'',key:''};
+const AIP='This image is one multiple-choice question from the NEET (UG) exam (Physics, Chemistry or Biology) with four options. Solve it carefully, thinking step by step but briefly. Options may be labelled 1-4 or A-D (A=1, B=2, C=3, D=4). End your reply with a final line exactly like: ANSWER: 3';
+const parseAns=t=>{const m=[...String(t).matchAll(/ANSWER:\s*\(?([1-4A-Da-d])\)?/gi)].pop();return m?keyIdx(m[1]):-1};
+const getSample=async()=>{try{return window.claude?await claude.use('sample'):null}catch(e){return null}};
+async function aiOne(it,mode){const sm=await getSample();
+ if(sm){const bl=await (await fetch(it.q)).blob();const r=await sm(AIP,{images:[bl],modelTier:'default',cache:false});return parseAns(r.text)}
+ if(!AIQ.key)throw{code:'no_key'};
+ const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+GEMINI_MODEL+':generateContent',{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':AIQ.key},body:JSON.stringify({contents:[{parts:[{text:AIP},{inline_data:{mime_type:'image/jpeg',data:it.q.split(',')[1]}}]}],generationConfig:{temperature:0,maxOutputTokens:8192}})});
+ if(!res.ok){let m='';try{m=(await res.json()).error.message}catch(e){}
+  if(res.status==429)throw{code:'rate_limited'};if(res.status==401||res.status==403||/API key|not valid|permission/i.test(m))throw{code:'bad_key'};throw{code:'http_'+res.status}}
+ const j=await res.json();return parseAns(((j.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join(''))}
+function aiRun(items,mode,conc){Object.assign(AIQ,{items,stop:false,skip:false,err:''});items.forEach(it=>{it.st='pending'});let i=0;
+ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ const worker=async()=>{while(!AIQ.stop&&i<items.length){const it=items[i++];let tries=0;
+  for(;;){try{const a=await aiOne(it,mode);if(a>=0){it.a.length=0;it.a.push(a);it.st='done'}else it.st='fail';break}
+   catch(e){const c=e&&e.code;if(c=='rate_limited'&&tries++<5){await sleep(8000*tries);continue}
+    if(c=='not_granted'||c=='no_key'||c=='bad_key'){AIQ.stop=true;AIQ.err=c}it.st='fail';break}}}
+  if(AIQ.stop)items.forEach(x=>{if(x.st=='pending')x.st='fail'})};
+ for(let k=0;k<conc;k++)worker()}
+const aiCount=()=>{const it=AIQ.items;return{done:it.filter(x=>x.st=='done').length,fail:it.filter(x=>x.st=='fail').length,total:it.length}};
+const aiText=()=>{const c=aiCount();return AIQ.err?'AI answers unavailable ('+({no_key:'add your Gemini key',bad_key:'Gemini key rejected',not_granted:'not allowed'}[AIQ.err]||AIQ.err)+')':'AI answers '+c.done+'/'+c.total+(c.fail?' · '+c.fail+' failed':'')};
+const aiDa=q=>q.a.length?(q.lab?q.lab[q.a[0]]:q.a[0]+1):'not available';
+function aiWait(){const c=aiCount();if(AIQ.skip||AIQ.stop||c.done+c.fail>=c.total)return false;
+ app.innerHTML=`<div class="wrap" style="padding-top:60px"><h1 style="font-size:30px">Working out the answers…</h1><p class="lead" id="aiw"></p><button class="btn g" id="aiskip">Score now with the answers ready so far</button></div>`;
+ const upd=()=>{const k=aiCount();const e=$('#aiw');if(e)e.textContent='The AI has solved '+(k.done+k.fail)+' of '+k.total+' questions. Your score appears as soon as it finishes.'};upd();
+ const t=setInterval(()=>{const k=aiCount();if(k.done+k.fail>=k.total||AIQ.stop){clearInterval(t);finish()}else upd()},1500);
+ $('#aiskip').onclick=()=>{clearInterval(t);AIQ.skip=true;finish()};return true}
 async function convert(){const say=t=>{$('#upm').textContent=t};
  try{const f=$('#upq').files[0];if(!f)return say('Choose the question paper PDF first.');
+  const key=$('#upk2').value.trim()||GEMINI_KEY;try{if(key)localStorage.setItem('neet_ai_key',key)}catch(e){}
+  if(!(await getSample())&&!key)return say('A Gemini API key is needed for the AI answers. Paste it in the key box.');
   say('Loading the PDF reader…');await loadPdfJs();say('Reading the PDF…');const pages=await readPdf(f);
   const fq=findQuestions(pages);if(!fq.count)return say('I could not find numbered questions (1., 2., 3. …) in this PDF. It may be a scanned image, or the numbering may be in a different style.');
-  const key={};parseKey($('#upt').value,key);const kf=$('#upk').files[0];if(kf)parseKey(await pdfText(kf),key);
-  Object.keys(fq.ans).forEach(n=>{if(!(n in key))key[n]=keyIdx(fq.ans[n])});
-  const nk=Object.keys(key).length;if(!nk)return say('Found '+fq.count+' questions but no answer key. Upload the key, paste it in the box, or use a PDF that has "Answer (x)" after each question.');
-  const need=Object.keys(fq.regs).map(Number).filter(n=>n in key);const skipped=fq.count-need.length;
-  const regs={};need.forEach(n=>regs[n]=fq.regs[n]);
-  const imgs=await renderRegs(pages,regs,k=>say('Building question '+k+' of '+need.length+'…'));
-  const lab=$('#upl').value,items=[];need.sort((a,b)=>a-b).forEach(n=>{if(imgs[n])items.push({q:imgs[n],a:[key[n]],da:lab?'ABCD'[key[n]]:String(key[n]+1)})});
+  const need=Object.keys(fq.regs).map(Number).sort((a,b)=>a-b);
+  const imgs=await renderRegs(pages,fq.regs,k=>say('Building question '+k+' of '+need.length+'…'));
+  const lab=$('#upl').value,items=[];need.forEach(n=>{if(imgs[n])items.push({q:imgs[n],a:[],ai:true,st:'pending'})});
   items.forEach((it,i)=>it.n=i+1);const N=items.length;if(!N)return say('No usable questions were built.');
   let sp=[...document.querySelectorAll('.ups')].map(e=>+e.value||0);
   if(!sp.some(x=>x)){sp=N==180?[45,45,45,45]:[0,1,2,3].map(i=>Math.floor(N/4)+(i<N%4?1:0))}
   if(sp.reduce((a,b)=>a+b)!=N)return say('Your subject counts add up to '+sp.reduce((a,b)=>a+b)+' but '+N+' questions were built. Adjust the counts or leave them blank.');
-  CONV={id:'custom',pyq:1,src:items,lab,name:$('#upn').value||'Uploaded mock',min:+$('#upm2').value||N,sp,sm:n=>{let c=0;for(let i=0;i<4;i++){c+=sp[i];if(n<=c)return i}return 3}};
-  $('#upm').innerHTML='Ready: '+N+' questions built'+(skipped?' ('+skipped+' skipped: no answer found or could not be read)':'')+'. Subjects: '+sp.map((c,i)=>SEC[i]+' '+c).join(', ')+'. Time: '+CONV.min+' min.<br><br><button class="btn" id="ups">Start test</button>';
-  $('#ups').onclick=()=>start(CONV)}catch(e){say('Something went wrong: '+(e&&e.message||e))}}
+  AIQ.key=key;CONV={id:'custom',pyq:1,ai:true,src:items,lab,name:$('#upn').value||'Uploaded mock',min:+$('#upm2').value||N,sp,sm:n=>{let c=0;for(let i=0;i<4;i++){c+=sp[i];if(n<=c)return i}return 3}};
+  $('#upm').innerHTML='Ready: '+N+' questions built. Subjects: '+sp.map((c,i)=>SEC[i]+' '+c).join(', ')+'. Time: '+CONV.min+' min.<br>Gemini is now working out the answers in the background; you can start the test right away.<br><br><button class="btn" id="ups">Start test</button>';
+  $('#ups').onclick=()=>start(CONV);aiRun(items,'',window.claude?2:3)}catch(e){say('Something went wrong: '+(e&&e.message||e))}}
 let CONV=null;
-const wireUpload=()=>{$('#upc').onclick=convert};
+const wireUpload=()=>{$('#upc').onclick=convert;try{$('#upk2').value=localStorage.getItem('neet_ai_key')||''}catch(e){}};
 let TAB='mock';
 function lobby(tab){if(typeof tab=='string')TAB=tab;clearInterval(tick);E=null;
 app.innerHTML=`<div class="wrap"><nav><span class="logo">Education<b>Times</b></span><a>News</a><a id="nx" style="cursor:pointer">Exams</a><a class="on">Mock Tests</a><a>Colleges</a></nav>
@@ -226,9 +254,9 @@ ${TAB=='pyq'?PYQHTML():TAB=='up'?UPHTML():`<p class="meta">Papers mix statement-
 document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>start(TESTS.find(x=>x.id==b.dataset.t)));$('#tp').onclick=()=>lobby('pyq');$('#tm2').onclick=()=>lobby('mock');$('#tu').onclick=()=>lobby('up');if(TAB=='up')wireUpload();$('#nx').onclick=()=>lobby('pyq');if($('#rs'))$('#rs').onclick=()=>{USED.clear();saveUsed();lobby()};if($('#py'))$('#py').onclick=()=>start(PYQ);if($('#py25'))$('#py25').onclick=()=>start(PYQ25)}
 function exams(){lobby('pyq')}
 function start(t){const qs=build(t);qs.forEach((q,i)=>q.i=i);E={t,qs,ans:{},vis:{},mk:{},cur:0,sec:0,left:t.min*60,time:{}};
-tick=setInterval(()=>{E.left--;E.time[E.cur]=(E.time[E.cur]||0)+1;if(E.left<=0)return finish();const e=$('#tm');if(e)e.textContent=fmt(E.left)},1000);draw()}
+tick=setInterval(()=>{E.left--;E.time[E.cur]=(E.time[E.cur]||0)+1;if(E.left<=0)return finish();const e=$('#tm');if(e)e.textContent=fmt(E.left);const ap=$('#aip');if(ap)ap.textContent=aiText()},1000);draw()}
 function draw(){const q=E.qs[E.cur];E.sec=q.s;E.vis[q.i]=1;const sq=E.qs.filter(x=>x.s==q.s);
-app.innerHTML=`<div class="eh"><b>${E.t.name}</b><span class="pill" style="background:#fff3;color:var(--pt)">Exam mode</span><span class="sp"></span><span>Time left</span><span class="timer" id="tm">${fmt(E.left)}</span><button class="btn" style="background:#fff;color:var(--pr)" id="sub">Submit test</button></div>
+app.innerHTML=`<div class="eh"><b>${E.t.name}</b><span class="pill" style="background:#fff3;color:var(--pt)">Exam mode</span><span class="sp"></span>${E.t.ai?`<span class="pill" id="aip" style="background:#fff3;color:var(--pt)">${aiText()}</span>`:''}<span>Time left</span><span class="timer" id="tm">${fmt(E.left)}</span><button class="btn" style="background:#fff;color:var(--pr)" id="sub">Submit test</button></div>
 <div class="tabs">${SEC.map((n,i)=>E.t.sp[i]?`<button class="tab ${i==q.s?'on':''}" data-s="${i}">${n}</button>`:'').join('')}</div>
 <div class="main"><div class="qa"><div class="meta">${SEC[q.s]} · Question ${sq.indexOf(q)+1} of ${sq.length} · +4 / −1</div><div class="qt">${q.img?`<img class="qi" src="${q.img}" alt="Question">`:esc(q.q)}</div>
 ${q.o.map((o,k)=>`<button class="opt ${E.ans[q.i]===k?'sel':''}" data-k="${k}"><i>${q.lab?q.lab[k]:k+1}</i><span>${q.oi?`<img class="oi" src="${q.oi[k]}">`:esc(o)}</span></button>`).join('')}
@@ -241,14 +269,14 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{E.cur=E.qs.findIndex
 const next=()=>{E.cur=Math.min(E.cur+1,E.qs.length-1);draw()};
 $('#sn').onclick=()=>{delete E.mk[q.i];next()};$('#mk').onclick=()=>{E.mk[q.i]=1;next()};$('#cl').onclick=()=>{delete E.ans[q.i];draw()};
 $('#sub').onclick=()=>{const m=modal(`<h3>Submit the test?</h3><p>${Object.keys(E.ans).length} of ${E.qs.length} questions answered. You cannot return after submitting.</p><div class="row"><button class="btn" id="ok">Submit</button><button class="btn g" id="no">Cancel</button></div>`);m.querySelector('#no').onclick=()=>m.remove();m.querySelector('#ok').onclick=()=>{m.remove();finish()}}}
-function finish(){clearInterval(tick);
-const R=SEC.map((n,s)=>{let a=0,c=0,w=0;const g=E.qs.filter(q=>q.s==s);g.forEach(q=>{const u=E.ans[q.i];if(u!=null){a++;ok(q,u)?c++:w++}});return{n,tot:g.length,a,c,w,sc:c*4-w}}).filter(r=>r.tot);
-const T=R.reduce((o,r)=>({a:o.a+r.a,c:o.c+r.c,w:o.w+r.w,sc:o.sc+r.sc,tot:o.tot+r.tot}),{a:0,c:0,w:0,sc:0,tot:0});
+function finish(){clearInterval(tick);if(E.t.ai&&aiWait())return;
+const R=SEC.map((n,s)=>{let a=0,c=0,w=0;const g=E.qs.filter(q=>q.s==s);g.forEach(q=>{const u=E.ans[q.i];if(u!=null){const r=q.ref;if(r&&r.ai&&r.st!='done')return;a++;ok(q,u)?c++:w++}});return{n,tot:g.length,a,c,w,sc:c*4-w}}).filter(r=>r.tot);
+const uns=E.qs.filter(q=>q.ref&&q.ref.ai&&q.ref.st!='done'&&E.ans[q.i]!=null).length;const T=R.reduce((o,r)=>({a:o.a+r.a,c:o.c+r.c,w:o.w+r.w,sc:o.sc+r.sc,tot:o.tot+r.tot}),{a:0,c:0,w:0,sc:0,tot:0});
 app.innerHTML=`<div class="wrap"><nav><span class="logo">Education<b>Times</b></span><span class="sp"></span><button class="btn" id="bk">Back to Mock Tests</button></nav>
-<h1 style="font-size:36px">Your scorecard</h1><p class="lead" style="margin-bottom:0">${E.t.name}</p>
+<h1 style="font-size:36px">Your scorecard</h1><p class="lead" style="margin-bottom:0">${E.t.name}</p>${E.t.ai?`<p class="meta">Scored with answers calculated by AI, which can contain mistakes.${uns?' '+uns+' answered question(s) had no AI answer and were not scored.':''}</p>`:''}
 <div class="stats"><div class="st"><b>${T.sc}</b>Score (max ${T.tot*4})</div><div class="st"><b>${T.a}/${T.tot}</b>Attempted</div><div class="st"><b>${T.c}</b>Correct</div><div class="st"><b>${T.w}</b>Incorrect</div><div class="st"><b>${T.a?Math.round(T.c/T.a*100):0}%</b>Accuracy</div></div>
 <h3>Subject-wise analysis</h3><div class="tbl"><table><tr><th>Subject</th><th>Attempted</th><th>Correct</th><th>Wrong</th><th>Score</th><th>Accuracy</th></tr>${R.map(r=>`<tr><td>${r.n}</td><td>${r.a}/${r.tot}</td><td>${r.c}</td><td>${r.w}</td><td>${r.sc}/${r.tot*4}</td><td>${r.a?Math.round(r.c/r.a*100):0}%</td></tr>`).join('')}</table></div>
-<h3>Answer key &amp; review</h3>${E.qs.map((q,n)=>{const u=E.ans[q.i];return`<div class="ky"><div class="meta">${SEC[q.s]} · Q${n+1} · ${u==null?'Unattempted':ok(q,u)?'✅ Correct (+4)':'❌ Wrong (−1)'}</div><div style="margin:6px 0 10px;white-space:pre-line">${q.img?`<img class="qi" src="${q.img}">`:esc(q.q)}</div>${q.img?`<div style="margin-bottom:10px"><b>Correct answer: option ${q.da}</b></div>`:''}${q.o.map((o,k)=>`<div class="opt ${ok(q,k)?'right':k==u?'wrong':''}"><i>${q.lab?q.lab[k]:k+1}</i><span>${q.oi?`<img class="oi" src="${q.oi[k]}">`:esc(o)}</span></div>`).join('')}</div>`}).join('')}</div>`;
+<h3>Answer key &amp; review</h3>${E.qs.map((q,n)=>{const u=E.ans[q.i];return`<div class="ky"><div class="meta">${SEC[q.s]} · Q${n+1} · ${u==null?'Unattempted':(q.ref&&q.ref.ai&&q.ref.st!='done')?'Not scored (no AI answer)':ok(q,u)?'✅ Correct (+4)':'❌ Wrong (−1)'}</div><div style="margin:6px 0 10px;white-space:pre-line">${q.img?`<img class="qi" src="${q.img}">`:esc(q.q)}</div>${q.img?`<div style="margin-bottom:10px"><b>${q.ref&&q.ref.ai?'AI answer':'Correct answer'}: option ${q.ref&&q.ref.ai?aiDa(q):q.da}</b></div>`:''}${q.o.map((o,k)=>`<div class="opt ${ok(q,k)?'right':k==u?'wrong':''}"><i>${q.lab?q.lab[k]:k+1}</i><span>${q.oi?`<img class="oi" src="${q.oi[k]}">`:esc(o)}</span></div>`).join('')}</div>`}).join('')}</div>`;
 $('#bk').onclick=E.t.id=='custom'?()=>lobby('up'):E.t.pyq?exams:lobby}
 lobby();
 </script></body></html>
